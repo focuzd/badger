@@ -77,7 +77,7 @@ static __always_inline int count_and_return(int action, struct sample *s)
         key = PASSED;
 
     if (s) {
-        s->verdict = key;
+        s->verdict = action;
         bpf_ringbuf_submit(s, 0);
     }
 
@@ -154,24 +154,6 @@ int xdp_count_and_filter(struct xdp_md *ctx)
         }
     }
 
-    __u32 bkey = 0;
-    cfg_key = CFG_DST_BUDGET;
-    __u64 *dbudget = bpf_map_lookup_elem(&config, &cfg_key);
-    if (dbudget && *dbudget != 0) {
-        struct rate_window *win = bpf_map_lookup_elem(&dst_budget, &bkey);
-        if (win) {
-            __u64 now = bpf_ktime_get_ns();
-            __u64 old_start = win->start_ns;
-            if (now - old_start > WINDOW_SIZE) {
-                if (__sync_val_compare_and_swap(&win->start_ns, old_start, now) == old_start)
-                    win->count = 0;
-            }
-            __u64 old_count = __sync_fetch_and_add(&win->count, 1);
-            if (old_count + 1 > *dbudget) 
-                return count_and_return(XDP_DROP, s);
-        }
-    }
-
     struct lpm_key lkey = {
         .prefixlen = 32,
         .addr = iph->saddr
@@ -234,6 +216,24 @@ int xdp_count_and_filter(struct xdp_md *ctx)
         if (bpf_map_lookup_elem(&drop_dports, &udph->dest) || 
             bpf_map_lookup_elem(&drop_sports, &udph->source))
             return count_and_return(XDP_DROP, s);
+    }
+
+    __u32 bkey = 0;
+    cfg_key = CFG_DST_BUDGET;
+    __u64 *dbudget = bpf_map_lookup_elem(&config, &cfg_key);
+    if (dbudget && *dbudget != 0) {
+        struct rate_window *win = bpf_map_lookup_elem(&dst_budget, &bkey);
+        if (win) {
+            __u64 now = bpf_ktime_get_ns();
+            __u64 old_start = win->start_ns;
+            if (now - old_start > WINDOW_SIZE) {
+                if (__sync_val_compare_and_swap(&win->start_ns, old_start, now) == old_start)
+                    win->count = 0;
+            }
+            __u64 old_count = __sync_fetch_and_add(&win->count, 1);
+            if (old_count + 1 > *dbudget) 
+                return count_and_return(XDP_DROP, s);
+        }
     }
     
     return count_and_return(XDP_PASS, s);
