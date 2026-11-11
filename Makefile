@@ -18,8 +18,8 @@ xdp_filter.o: src/xdp_filter.c $(HEADERS)
 ctl: src/ctl.c src/maps.c $(HEADERS)
 	$(CC) $(CFLAGS) -o $@ src/ctl.c src/maps.c $(LDLIBS)
 
-detector: src/detector.c src/src_table.c src/maps.c $(HEADERS)
-	$(CC) $(CFLAGS) -o $@ src/detector.c src/src_table.c src/maps.c $(LDLIBS)
+detector: src/detector.c src/maps.c $(HEADERS)
+	$(CC) $(CFLAGS) -o $@ src/detector.c src/maps.c $(LDLIBS)
 
 clean:
 	rm -f xdp_filter.o ctl detector
