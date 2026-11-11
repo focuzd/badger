@@ -13,6 +13,9 @@ if ! ip -4 addr show dev eno1 | grep -q "inet 10.0.0.2/24"; then
 fi
 ip -4 -brief addr show dev eno1
 
+sysctl -w net.ipv4.conf.all.rp_filter=0
+sysctl -w net.ipv4.conf.eno1.rp_filter=0
+
 xdp-loader unload eno1 --all 2>/dev/null || true
 
 xdp-loader load -m skb -s xdp eno1 xdp_filter.o
