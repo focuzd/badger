@@ -56,6 +56,61 @@ void parse_ip(const char *ip_str, struct lpm_key *lkey) {
     lkey->addr = (d << 24) | (c << 16) | (b << 8) | a;
 }
 
+void walk_rules(bool del)
+{
+    const char *names[] = {"drop_sports", "drop_dports", "src_block"};
+    const char *titles[] = {"blocked source ports", "blocked destination ports", "blocked sources"};
+    struct lpm_key key, next;
+    struct in_addr addr;
+    __u16 port;
+    void *prev;
+    int fd;
+
+    for (int i = 0; i < 3; i++) {
+        fd = find_map_fd(names[i]);
+        prev = NULL;
+        if (!del)
+            printf("%s:\n", titles[i]);
+
+        // lpm_key is big enough to hold the __u16 port keys too
+        while (bpf_map_get_next_key(fd, del ? NULL : prev, &next) == 0) {
+            if (del) {
+                if (bpf_map_delete_elem(fd, &next) != 0) {
+                    fprintf(stderr, "Err: failed to delete from %s ", names[i]);
+                    perror("");
+                    exit(EXIT_FAILURE);
+                }
+            } else if (i < 2) {
+                memcpy(&port, &next, sizeof(port));
+                printf("  %hu\n", ntohs(port));
+            } else {
+                addr.s_addr = next.addr;
+                printf("  %s/%u\n", inet_ntoa(addr), next.prefixlen);
+            }
+
+            key = next;
+            prev = &key;
+        }
+        close(fd);
+    }
+}
+
+void list_config(int fd)
+{
+    const char *names[] = {"dst-budget", "src-rate", "src-burst", "sample-rate"};
+    __u64 val;
+
+    printf("config:\n");
+    for (__u32 i = 0; i < 4; i++) {
+        if (bpf_map_lookup_elem(fd, &i, &val) != 0) {
+            fprintf(stderr, "Err: failed to read config %s ", names[i]);
+            perror("");
+            exit(EXIT_FAILURE);
+        }
+        printf("  %s: %llu\n", names[i], val);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (argc < 2) {
@@ -178,7 +233,12 @@ int main(int argc, char *argv[])
     }
 
     else if (strcmp(argv[1], "list") == 0) {
-        printf("to be implemented\n");
+        walk_rules(false);
+        list_config(find_map_fd("config"));
+    }
+
+    else if (strcmp(argv[1], "reset") == 0) {
+        walk_rules(true);
     }
 
     else {
